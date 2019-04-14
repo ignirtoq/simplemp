@@ -32,6 +32,9 @@ LICENSE = 'MIT'
 AUTHOR = 'Jeffrey Bouas'
 EMAIL = 'ignirtoq+simplemp@gmail.com'
 PACKAGES = find_packages()
+EXTRAS_REQUIRE = {
+    'websockets': ['websockets < 7.0'],
+}
 TEST_SUITE = 'nose.collector'
 TESTS_REQUIRE = ['nose']
 CLASSIFIERS = [
@@ -44,6 +47,7 @@ CLASSIFIERS = [
     'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
 ]
+PYTHON_REQUIRES = '>=3.5.2'
 
 
 setup(
@@ -54,6 +58,8 @@ setup(
     license=LICENSE,
     packages=PACKAGES,
     classifiers=CLASSIFIERS,
+    extras_require=EXTRAS_REQUIRE,
     test_suite=TEST_SUITE,
     tests_require=TESTS_REQUIRE,
+    python_requires=PYTHON_REQUIRES,
 )
