@@ -1,11 +1,13 @@
 import asyncio
 import unittest
 
-
+from simplemp import NoTopicRegistrations
 from simplemp.brokers import RequestResponseBroker
 
 
 class AsyncMixin:
+    timeout = 0.02
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._loop = asyncio.get_event_loop()
@@ -16,7 +18,9 @@ class AsyncMixin:
         return self._loop
 
     def run_coroutine(self, coro):
-        self._loop.run_until_complete(coro)
+        self._loop.run_until_complete(
+            asyncio.wait_for(coro, timeout=self.timeout)
+        )
 
 
 class RequestMessage(AsyncMixin, unittest.TestCase):
@@ -33,6 +37,21 @@ class RequestMessage(AsyncMixin, unittest.TestCase):
         'content': content,
     }
 
+    def setup_broker(self, override_registrations=True):
+        loop = self.new_loop()
+        send, fut = self.define_send()
+
+        broker = RequestResponseBroker(send, loop)
+
+        # bypass the wait for registrations
+        broker._registrations_received.set_result(None)
+
+        if override_registrations:
+            # artificially set responders
+            broker._responder_counts[self.topic] = 1
+
+        return broker, fut
+
     def define_send(self):
         future = self._loop.create_future()
 
@@ -47,21 +66,26 @@ class RequestMessage(AsyncMixin, unittest.TestCase):
         message.pop('sequence')
         self.assertDictEqual(message, expected_message)
 
-    def test_request_message(self):
-        loop = self.new_loop()
-        send, fut = self.define_send()
+    def test_request_no_responders(self):
+        broker, future = self.setup_broker(override_registrations=False)
 
-        broker = RequestResponseBroker(send, loop)
+        # ensure request stopped at API layer with no registered responders
+        with self.assertRaises(NoTopicRegistrations):
+            self.run_coroutine(broker.request(self.topic, lambda resp: None))
+
+    def test_request_message(self):
+        broker, future = self.setup_broker()
+
         self.run_coroutine(broker.request(self.topic, lambda resp: None))
-        self.assertTrue(fut.done())
-        self.verify_message(fut.result(), self.expected_message)
+
+        self.assertTrue(future.done())
+        self.verify_message(future.result(), self.expected_message)
 
     def test_request_message_with_content(self):
-        loop = self.new_loop()
-        send, fut = self.define_send()
+        broker, future = self.setup_broker()
 
-        broker = RequestResponseBroker(send, loop)
         self.run_coroutine(broker.request(self.topic, lambda resp: None,
                                           content=self.content))
-        self.assertTrue(fut.done())
-        self.verify_message(fut.result(), self.expected_message_with_content)
+
+        self.assertTrue(future.done())
+        self.verify_message(future.result(), self.expected_message_with_content)

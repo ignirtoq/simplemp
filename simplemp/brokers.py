@@ -12,6 +12,9 @@ from .messages import (TYPE_PUBLICATION, TYPE_REGISTRATIONS,
                        unpack_message)
 
 
+__all__ = ['NoTopicRegistrations']
+
+
 class NoTopicRegistrations(Exception):
     """Raised on requesting a topic for which no responders have registered."""
 
