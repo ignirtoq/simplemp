@@ -3,20 +3,12 @@ from asyncio.coroutines import iscoroutinefunction
 from collections import defaultdict
 from logging import getLogger
 
-from .messages import (TYPE_PUBLICATION, TYPE_REGISTRATIONS,
-                       TYPE_REGISTRATIONS_UPDATE, TYPE_REQUEST, TYPE_RESPONSE,
+from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_RESPONSE,
                        create_publish_message, create_register_message,
                        create_response_message, create_request_message,
                        create_subscribe_message, create_unregister_message,
                        create_unsubscribe_message, get_new_sequence,
                        unpack_message)
-
-
-__all__ = ['NoTopicRegistrations']
-
-
-class NoTopicRegistrations(Exception):
-    """Raised on requesting a topic for which no responders have registered."""
 
 
 async def call_as_coroutine(func, *args, **kwargs):
@@ -61,13 +53,9 @@ class RequestResponseBroker(BrokerBase):
         self._pending_requests = {}
         self._handled_topics = defaultdict(list)
         self._message_route = {
-            TYPE_REGISTRATIONS: self._handle_registrations,
-            TYPE_REGISTRATIONS_UPDATE: self._handle_registrations_update,
             TYPE_REQUEST: self._handle_request,
             TYPE_RESPONSE: self._handle_response,
         }
-        self._responder_counts = {}
-        self._registrations_received = loop.create_future()
 
     async def register(self, topic, handler):
         send_msg = topic not in self._handled_topics
@@ -80,12 +68,6 @@ class RequestResponseBroker(BrokerBase):
         self._handled_topics.pop(topic)
 
     async def request(self, topic, handler, content=None):
-        if not self._registrations_received.done():
-            self._log.debug('server registrations not yet received; awaiting')
-            await self._registrations_received
-        num_responders = self._responder_counts.get(topic, 0)
-        if num_responders < 1:
-            raise NoTopicRegistrations
         sequence = get_new_sequence()
         while sequence in self._pending_requests:
             sequence = get_new_sequence()
@@ -105,20 +87,6 @@ class RequestResponseBroker(BrokerBase):
         handler = self._pending_requests.pop(sequence, None)
         if handler is not None:
             self._schedule_handler(handler, topic, content)
-
-    async def _handle_registrations(self, _, __, content=None):
-        self._responder_counts = content
-        self._log.debug('responder registrations: %s', self._responder_counts)
-        if not self._registrations_received.done():
-            self._log.debug('acknowledging registrations received')
-            self._registrations_received.set_result(None)
-
-    async def _handle_registrations_update(self, topic, _, content=None):
-        if topic:
-            self._responder_counts[topic] = content
-        else:
-            self._responder_counts.update(content)
-        self._log.debug('responder registrations: %s', self._responder_counts)
 
     async def handle_message(self, message):
         type, topic, sequence, content = unpack_message(message)

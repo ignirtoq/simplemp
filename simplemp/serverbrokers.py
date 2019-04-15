@@ -5,8 +5,7 @@ from logging import getLogger
 from typing import Any, Callable, Coroutine, Optional, Dict, Set
 
 from .connections import BaseConnection
-from .messages import (create_message, get_message_sequence, get_message_topic,
-                       TYPE_REGISTRATIONS, TYPE_REGISTRATIONS_UPDATE)
+from .messages import create_message, get_message_sequence, get_message_topic
 
 
 class PendingRequest:
@@ -114,7 +113,6 @@ class RegistrationAssociations:
 
         topic_responders.add(connection)
         self.responder_to_topics[connection].add(topic)
-        return len(topic_responders)
 
     def remove_from_topic(self, topic, connection) -> Optional[int]:
         responder_topics = self.responder_to_topics.get(connection)
@@ -128,21 +126,11 @@ class RegistrationAssociations:
             return
 
         topic_responders.remove(connection)
-        return len(topic_responders)
 
     def remove_connection(self, connection) -> Dict[str, int]:
         responder_topics = self.responder_to_topics.get(connection)
         if responder_topics is None:
             return {}
-
-        new_counts = {}
-        for topic in responder_topics:
-            topic_responders = self.topic_to_responders.get(topic)
-            if topic_responders is not None and connection in topic_responders:
-                topic_responders.remove(connection)
-                new_counts[topic] = len(topic_responders)
-
-        return new_counts
 
 
 class RequestResponse:
@@ -168,39 +156,16 @@ class RequestResponse:
 
     async def handle_register(self, message, connection: BaseConnection):
         topic = get_message_topic(message)
-        new_count = self.registrations.add_to_topic(topic, connection)
-        if new_count is not None:
-            self._log.debug("registration counts for '%s' changed; "
-                            "broadcasting update", topic)
-            await self.broadcast_registration_update(new_count, topic)
+        self.registrations.add_to_topic(topic, connection)
 
     async def handle_unregister(self, message, connection: BaseConnection):
         topic = get_message_topic(message)
-        new_count = self.registrations.remove_from_topic(topic, connection)
-        if new_count is not None:
-            self._log.debug("registration counts for '%s' changed; "
-                            "broadcasting update", topic)
-            await self.broadcast_registration_update(new_count, topic)
+        self.registrations.remove_from_topic(topic, connection)
 
     def handle_disconnect(self, connection: BaseConnection):
         self._log.debug('handling %s disconnect', connection.remote_address)
         self.requests.remove_connection(connection)
-        new_counts = self.registrations.remove_connection(connection)
-        self._loop.create_task(self.broadcast_registration_update(new_counts))
-
-    async def broadcast_registration_update(self, count, topic=None):
-        topic = '' if topic is None else topic
-        message = create_message(TYPE_REGISTRATIONS_UPDATE, topic,
-                                 content=count)
-        self._log.debug('broadcasting%s registration count update: %s',
-                        (' %s' % topic) if topic else topic, count)
-        await self.broadcast(message)
-
-    async def send_registrations(self, connection: BaseConnection):
-        registration_counts = self.registrations.get_topic_responder_counts()
-        message = create_message(TYPE_REGISTRATIONS, '',
-                                 content=registration_counts)
-        await connection.send(message)
+        self.registrations.remove_connection(connection)
 
 
 class PublishSubscribe:

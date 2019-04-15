@@ -3,8 +3,7 @@ from logging import getLogger
 
 from .brokers import PublishSubscribeBroker, RequestResponseBroker
 from .connections import BaseConnection, Disconnected, create_client_connection
-from .messages import (TYPE_PUBLICATION, TYPE_REGISTRATIONS,
-                       TYPE_REGISTRATIONS_UPDATE, TYPE_REQUEST, TYPE_RESPONSE,
+from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_RESPONSE,
                        get_message_topic, get_message_type)
 
 
@@ -26,8 +25,6 @@ class Client:
             TYPE_PUBLICATION: self._pubsub.handle_message,
             TYPE_REQUEST: self._reqresp.handle_message,
             TYPE_RESPONSE: self._reqresp.handle_message,
-            TYPE_REGISTRATIONS: self._reqresp.handle_message,
-            TYPE_REGISTRATIONS_UPDATE: self._reqresp.handle_message,
         }
         self._listen_task = self._loop.create_task(self._listen_to_connection())
 

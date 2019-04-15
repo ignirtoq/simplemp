@@ -1,7 +1,6 @@
 import asyncio
 import unittest
 
-from simplemp import NoTopicRegistrations
 from simplemp.brokers import RequestResponseBroker
 
 
@@ -37,18 +36,11 @@ class RequestMessage(AsyncMixin, unittest.TestCase):
         'content': content,
     }
 
-    def setup_broker(self, override_registrations=True):
+    def setup_broker(self):
         loop = self.new_loop()
         send, fut = self.define_send()
 
         broker = RequestResponseBroker(send, loop)
-
-        # bypass the wait for registrations
-        broker._registrations_received.set_result(None)
-
-        if override_registrations:
-            # artificially set responders
-            broker._responder_counts[self.topic] = 1
 
         return broker, fut
 
@@ -65,13 +57,6 @@ class RequestMessage(AsyncMixin, unittest.TestCase):
         self.assertTrue('sequence' in message)
         message.pop('sequence')
         self.assertDictEqual(message, expected_message)
-
-    def test_request_no_responders(self):
-        broker, future = self.setup_broker(override_registrations=False)
-
-        # ensure request stopped at API layer with no registered responders
-        with self.assertRaises(NoTopicRegistrations):
-            self.run_coroutine(broker.request(self.topic, lambda resp: None))
 
     def test_request_message(self):
         broker, future = self.setup_broker()

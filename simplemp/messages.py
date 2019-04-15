@@ -11,9 +11,6 @@ TYPE_UNREGISTRATION = 'unregistration'
 TYPE_REQUEST = 'request'
 TYPE_RESPONSE = 'response'
 
-TYPE_REGISTRATIONS = 'registrations'
-TYPE_REGISTRATIONS_UPDATE = 'registrations-update'
-
 TYPE_PUBLICATION = 'publication'
 TYPE_SUBSCRIPTION = 'subscription'
 TYPE_UNSUBSCRIPTION = 'unsubscription'

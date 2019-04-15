@@ -38,9 +38,7 @@ class Server:
             await self._server.broadcast(message)
 
     async def _on_client_connect(self, connection: BaseConnection):
-        self._log.debug('client %s connected; sending registration counts',
-                        connection.remote_address)
-        await self._request_response.send_registrations(connection)
+        self._log.info('client %s connected', connection.remote_address)
         while True:
             try:
                 message = await connection.recv()
