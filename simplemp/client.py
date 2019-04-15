@@ -4,7 +4,8 @@ from logging import getLogger
 from .brokers import PublishSubscribeBroker, RequestResponseBroker
 from .connections import BaseConnection, Disconnected, create_client_connection
 from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_RESPONSE,
-                       get_message_topic, get_message_type)
+                       TYPE_REQUEST_COMPLETE, get_message_topic,
+                       get_message_type)
 
 
 __all__ = [
@@ -24,6 +25,7 @@ class Client:
         self._handlers = {
             TYPE_PUBLICATION: self._pubsub.handle_message,
             TYPE_REQUEST: self._reqresp.handle_message,
+            TYPE_REQUEST_COMPLETE: self._reqresp.handle_message,
             TYPE_RESPONSE: self._reqresp.handle_message,
         }
         self._listen_task = self._loop.create_task(self._listen_to_connection())
@@ -39,27 +41,27 @@ class Client:
 
     async def register(self, topic, handler):
         self._log.debug('sending registration for %s', topic)
-        await self._reqresp.register(topic, handler)
+        return await self._reqresp.register(topic, handler)
 
     async def unregister(self, topic):
         self._log.debug('cancelling registration for %s', topic)
-        await self._reqresp.unregister(topic)
+        return await self._reqresp.unregister(topic)
 
     async def request(self, topic, handler, content=None):
         self._log.debug('requesting %s', topic)
-        await self._reqresp.request(topic, handler, content)
+        return await self._reqresp.request(topic, handler, content)
 
     async def publish(self, topic, content=None):
         self._log.debug('publishing %s', topic)
-        await self._pubsub.publish(topic, content)
+        return await self._pubsub.publish(topic, content)
 
-    async def subscribe(self, topic, handler):
+    async def subscribe(self, topic):
         self._log.debug('subscribing to %s', topic)
-        await self._pubsub.subscribe(topic, handler)
+        return await self._pubsub.subscribe(topic)
 
     async def unsubscribe(self, topic):
         self._log.debug('cancelling subscription for %s', topic)
-        await self._pubsub.unsubscribe(topic)
+        return await self._pubsub.unsubscribe(topic)
 
     async def _listen_to_connection(self):
         self._log.debug('client listener spawned')

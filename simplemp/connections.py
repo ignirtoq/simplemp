@@ -4,14 +4,12 @@ from asyncio import (CancelledError, IncompleteReadError, StreamReader,
 from json import dumps, loads
 from logging import getLogger
 from struct import Struct
-from typing import Dict, Optional, Set, Type
+from typing import Optional, Set
 
 try:
     import websockets
 except ImportError:
-    HAVE_WEBSOCKETS = False
-else:
-    HAVE_WEBSOCKETS = True
+    websockets = None
 
 shutdown_timeout = 3.0
 
@@ -100,7 +98,7 @@ class TcpConnection(BaseConnection):
         await self._wr.drain()
 
     async def close(self):
-        self.log.debug('closing connection to server')
+        self.log.debug('closing connection')
         self._wr.write_eof()
         await self._wr.drain()
 
@@ -232,7 +230,7 @@ async def create_server(url, *, on_client_connect, loop=None, **kwargs):
     return server
 
 
-if HAVE_WEBSOCKETS:
+if websockets is not None:
     class WebSocketConnection(BaseConnection):
         url_prefix = ['ws://', 'wss://']
 

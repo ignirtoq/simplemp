@@ -10,6 +10,7 @@ TYPE_REGISTRATION = 'registration'
 TYPE_UNREGISTRATION = 'unregistration'
 TYPE_REQUEST = 'request'
 TYPE_RESPONSE = 'response'
+TYPE_REQUEST_COMPLETE = 'request-complete'
 
 TYPE_PUBLICATION = 'publication'
 TYPE_SUBSCRIPTION = 'subscription'

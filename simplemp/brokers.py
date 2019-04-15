@@ -2,7 +2,9 @@ from asyncio import ensure_future, get_event_loop
 from asyncio.coroutines import iscoroutinefunction
 from collections import defaultdict
 from logging import getLogger
+from typing import Dict, List
 
+from .messagequeue import MessageQueue
 from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_RESPONSE,
                        create_publish_message, create_register_message,
                        create_response_message, create_request_message,
@@ -98,7 +100,7 @@ class RequestResponseBroker(BrokerBase):
 class PublishSubscribeBroker(BrokerBase):
     def __init__(self, send, loop=None):
         super().__init__(send, loop=loop)
-        self._handled_messages = defaultdict(list)
+        self._subscriptions: Dict[str, List[MessageQueue]] = defaultdict(list)
         self._message_route = {
             TYPE_PUBLICATION: self._handle_publication,
         }
@@ -106,21 +108,25 @@ class PublishSubscribeBroker(BrokerBase):
     async def publish(self, topic, content=None):
         await self._send(create_publish_message(topic, content=content))
 
-    async def subscribe(self, topic, handler):
-        send_message = topic not in self._handled_messages
-        self._handled_messages[topic].append(handler)
+    async def subscribe(self, topic):
+        send_message = topic not in self._subscriptions
+        new_queue = MessageQueue(loop=self._loop)
+        self._subscriptions[topic].append(new_queue)
         if send_message:
             await self._send(create_subscribe_message(topic))
+        return new_queue
 
     async def unsubscribe(self, topic):
-        if topic in self._handled_messages:
+        if topic in self._subscriptions:
             await self._send(create_unsubscribe_message(topic))
-            self._handled_messages.pop(topic)
+            queues = self._subscriptions.pop(topic)
+            for queue in queues:
+                await queue.stop()
 
     async def _handle_publication(self, topic, content=None):
-        if topic in self._handled_messages:
-            for handler in self._handled_messages[topic]:
-                self._schedule_handler(handler, topic, content=content)
+        if topic in self._subscriptions:
+            for queue in self._subscriptions[topic]:
+                await queue.put(content)
 
     async def handle_message(self, message):
         type, topic, sequence, content = unpack_message(message)
