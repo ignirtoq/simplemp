@@ -47,6 +47,10 @@ def create_response_message(topic, sequence, content=None):
                           content=content)
 
 
+def create_request_complete_message(topic, sequence):
+    return create_message(TYPE_REQUEST_COMPLETE, topic, sequence=sequence)
+
+
 def create_publish_message(topic, content=None):
     return create_message(TYPE_PUBLICATION, topic, content=content)
 

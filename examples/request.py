@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
-from asyncio import Future, get_event_loop
-from functools import partial
+from asyncio import get_event_loop
 from logging import basicConfig, ERROR
 from simplemp import connect
 
@@ -9,24 +8,19 @@ prog = 'request'
 desc = 'Example request script'
 
 
-def print_response(handled_future: Future, topic, message=None):
-    print("'%s' response received: %s" % (topic, message))
-    handled_future.set_result(None)
-
-
-async def setup(url, topic, message, loop=None):
+async def amain(url, topic, message, loop=None):
     loop = get_event_loop() if loop is None else loop
-
-    handled_future = loop.create_future()
-    response_handler = partial(print_response, handled_future)
-
     client = await connect(url, loop=loop)
-    await client.request(topic, response_handler, message)
-    loop.create_task(stop_on_complete(handled_future, client, loop))
+    responses = await client.request(topic, message)
+    response_received = False
 
+    async for response in responses:
+        print("'%s' response received: %s" % (topic, response))
+        response_received = True
 
-async def stop_on_complete(future, client, loop):
-    await future
+    if not response_received:
+        print("No responders for '%s'" % topic)
+
     await client.disconnect()
     loop.stop()
 
@@ -34,8 +28,8 @@ async def stop_on_complete(future, client, loop):
 def main(*, message, topic, url, verbose):
     setup_logging(verbose)
     loop = get_event_loop()
+    loop.create_task(amain(url, topic, message))
 
-    loop.run_until_complete(setup(url, topic, message, loop=loop))
     try:
         loop.run_forever()
     finally:

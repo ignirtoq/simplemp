@@ -47,9 +47,9 @@ class Client:
         self._log.debug('cancelling registration for %s', topic)
         return await self._reqresp.unregister(topic)
 
-    async def request(self, topic, handler, content=None):
+    async def request(self, topic, content=None):
         self._log.debug('requesting %s', topic)
-        return await self._reqresp.request(topic, handler, content)
+        return await self._reqresp.request(topic, content)
 
     async def publish(self, topic, content=None):
         self._log.debug('publishing %s', topic)

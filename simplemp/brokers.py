@@ -2,15 +2,20 @@ from asyncio import ensure_future, get_event_loop
 from asyncio.coroutines import iscoroutinefunction
 from collections import defaultdict
 from logging import getLogger
-from typing import Dict, List
+from typing import Dict, List, Callable, Optional, Coroutine, Any
 
 from .messagequeue import MessageQueue
-from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_RESPONSE,
+from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_REQUEST_COMPLETE,
+                       TYPE_RESPONSE,
                        create_publish_message, create_register_message,
                        create_response_message, create_request_message,
                        create_subscribe_message, create_unregister_message,
                        create_unsubscribe_message, get_new_sequence,
                        unpack_message)
+
+
+class AlreadyRegistered(Exception):
+    """Raised when a topic has already been registered."""
 
 
 async def call_as_coroutine(func, *args, **kwargs):
@@ -52,49 +57,62 @@ class BrokerBase:
 class RequestResponseBroker(BrokerBase):
     def __init__(self, send, loop=None):
         super().__init__(send, loop=loop)
-        self._pending_requests = {}
-        self._handled_topics = defaultdict(list)
+        self._request_queues: Dict[str, MessageQueue] = {}
+        self._registered_handlers: Dict[str, Callable[[str, Optional[Any]],
+                                                      Coroutine]] = {}
         self._message_route = {
             TYPE_REQUEST: self._handle_request,
+            TYPE_REQUEST_COMPLETE: self._handle_request_complete,
             TYPE_RESPONSE: self._handle_response,
         }
 
     async def register(self, topic, handler):
-        send_msg = topic not in self._handled_topics
-        self._handled_topics[topic].append(handler)
-        if send_msg:
-            await self._send(create_register_message(topic))
+        if topic in self._registered_handlers:
+            raise AlreadyRegistered
+        self._registered_handlers[topic] = handler
+        await self._send(create_register_message(topic))
 
     async def unregister(self, topic):
         await self._send(create_unregister_message(topic))
-        self._handled_topics.pop(topic)
+        self._registered_handlers.pop(topic)
 
-    async def request(self, topic, handler, content=None):
+    async def request(self, topic, content=None):
         sequence = get_new_sequence()
-        while sequence in self._pending_requests:
+        while sequence in self._request_queues:
             sequence = get_new_sequence()
-        self._pending_requests[sequence] = handler
+        queue = MessageQueue(loop=self._loop)
+        self._request_queues[sequence] = queue
         self._log.debug("sending '%s' request", topic)
         await self._send(create_request_message(topic, sequence=sequence,
                                                 content=content))
+        return queue
 
     async def _handle_request(self, topic, sequence, content=None):
-        if topic in self._handled_topics:
-            for handler in self._handled_topics[topic]:
-                response = await self._schedule_handler(handler, topic, content)
-                await self._send(create_response_message(topic, sequence,
-                                                         content=response))
-
-    async def _handle_response(self, topic, sequence, content=None):
-        handler = self._pending_requests.pop(sequence, None)
+        handler = self._registered_handlers.get(topic)
         if handler is not None:
-            self._schedule_handler(handler, topic, content)
+            response = await self._schedule_handler(handler, topic, content)
+            await self._send(create_response_message(topic, sequence,
+                                                     content=response))
+
+    async def _handle_response(self, _, sequence, content=None):
+        queue = self._request_queues.get(sequence, None)
+        if queue is not None:
+            await queue.put(content)
+
+    async def _handle_request_complete(self, _, sequence, content=None):
+        queue = self._request_queues.pop(sequence, None)
+        if queue is not None:
+            self._log.debug('request %s complete', sequence)
+            await queue.stop()
 
     async def handle_message(self, message):
         type, topic, sequence, content = unpack_message(message)
         if type in self._message_route:
             handler = self._message_route[type]
             await handler(topic, sequence, content=content)
+        else:
+            self._log.warning("received message of unknown type '%s'",
+                              type)
 
 
 class PublishSubscribeBroker(BrokerBase):

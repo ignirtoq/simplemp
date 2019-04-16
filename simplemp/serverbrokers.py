@@ -5,28 +5,37 @@ from logging import getLogger
 from typing import Any, Callable, Coroutine, Optional, Dict, Set
 
 from .connections import BaseConnection
-from .messages import create_message, get_message_sequence, get_message_topic
+from .messages import (create_request_complete_message,
+                       get_message_sequence, get_message_topic)
 
 
 class PendingRequest:
     def __init__(self, requester: BaseConnection, responders: set,
-                 on_complete: Callable):
+                 on_complete: Callable, *, loop=None):
+        self.loop = get_event_loop() if loop is None else loop
+        self.sequence = None
+        self.topic = None
         self.requester = requester
         self.responders = responders.copy()
         self.on_complete = on_complete
 
     async def send_request(self, message):
+        self.sequence = get_message_sequence(message)
+        self.topic = get_message_topic(message)
         for responder in self.responders:
             await responder.send(message)
 
     async def send_response(self, message, connection):
         if connection in self.responders:
-            self.remove_responder(connection)
             await self.requester.send(message)
+            self.remove_responder(connection)
 
     def remove_responder(self, connection):
         self.responders.remove(connection)
         if len(self.responders) == 0:
+            complete_msg = create_request_complete_message(self.topic,
+                                                           self.sequence)
+            self.loop.create_task(self.requester.send(complete_msg))
             self.on_complete()
 
     def remove_requester(self):
@@ -34,7 +43,8 @@ class PendingRequest:
 
 
 class RequestPool:
-    def __init__(self, on_complete: Optional[Callable] = None):
+    def __init__(self, on_complete: Optional[Callable] = None, *, loop=None):
+        self.loop = get_event_loop() if loop is None else loop
         self.log = getLogger(__name__)
         self.requests: Dict[Any, PendingRequest] = dict()
         self.requesters: Dict[BaseConnection, Set[Any]] = defaultdict(set)
@@ -44,13 +54,15 @@ class RequestPool:
     async def add_request(self, requester: BaseConnection,
                           message, responders: Set[BaseConnection]):
         sequence = get_message_sequence(message)
-        self.requests[sequence] = PendingRequest(
-            requester, responders, partial(self.on_complete, sequence)
+        pending_request = PendingRequest(
+            requester, responders, partial(self.on_complete, sequence),
+            loop=self.loop
         )
+        self.requests[sequence] = pending_request
         self.requesters[requester].add(sequence)
         for responder in responders:
             self.responders[responder].add(sequence)
-            await responder.send(message)
+        await pending_request.send_request(message)
 
     async def send_response(self, responder: BaseConnection, message):
         sequence = get_message_sequence(message)
@@ -91,6 +103,7 @@ class RequestPool:
 
 class RegistrationAssociations:
     def __init__(self):
+        self.log = getLogger(__name__)
         self.topic_to_responders: Dict[str, Set[BaseConnection]] = (
             defaultdict(set)
         )
@@ -127,26 +140,36 @@ class RegistrationAssociations:
 
         topic_responders.remove(connection)
 
-    def remove_connection(self, connection) -> Dict[str, int]:
-        responder_topics = self.responder_to_topics.get(connection)
-        if responder_topics is None:
-            return {}
+    def remove_connection(self, connection) -> None:
+        topics = self.responder_to_topics.pop(connection, None)
+        if topics is None:
+            return
+
+        self.log.debug('%s disconnected and removed from %s',
+                       connection.remote_address, topics)
+        for topic in topics:
+            self.topic_to_responders[topic].remove(connection)
+            if not len(self.topic_to_responders[topic]):
+                self.topic_to_responders.pop(topic)
 
 
 class RequestResponse:
     def __init__(self, broadcast: Callable[[Any], Coroutine], *, loop=None):
-        self._loop = get_event_loop() if loop is None else loop
-        self._log = getLogger(__name__)
+        self.loop = get_event_loop() if loop is None else loop
+        self.log = getLogger(__name__)
         self.broadcast = broadcast
-        self.requests = RequestPool()
+        self.requests = RequestPool(loop=self.loop)
         self.registrations = RegistrationAssociations()
 
     async def handle_request(self, message, connection):
         topic = get_message_topic(message)
         responders = self.registrations.get_topic_responders(topic)
         if responders is None:
-            self._log.info(("received '%s' request with no "
-                            "registered responders") % topic)
+            self.log.info(("received '%s' request with no "
+                           "registered responders") % topic)
+            sequence = get_message_sequence(message)
+            await connection.send(create_request_complete_message(topic,
+                                                                  sequence))
             return
 
         await self.requests.add_request(connection, message, responders)
@@ -163,7 +186,7 @@ class RequestResponse:
         self.registrations.remove_from_topic(topic, connection)
 
     def handle_disconnect(self, connection: BaseConnection):
-        self._log.debug('handling %s disconnect', connection.remote_address)
+        self.log.debug('handling %s disconnect', connection.remote_address)
         self.requests.remove_connection(connection)
         self.registrations.remove_connection(connection)
 

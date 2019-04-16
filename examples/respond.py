@@ -10,7 +10,7 @@ desc = 'Example request responder script'
 
 def handle_request(topic, content=None):
     print("'%s' request received: %s" % (topic, content))
-    return '%s successfully processed' % topic
+    return "%s successfully processed content '%s'" % (topic, content)
 
 
 def main(*, topic, url, verbose):

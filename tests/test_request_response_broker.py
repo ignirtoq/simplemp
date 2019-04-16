@@ -61,7 +61,7 @@ class RequestMessage(AsyncMixin, unittest.TestCase):
     def test_request_message(self):
         broker, future = self.setup_broker()
 
-        self.run_coroutine(broker.request(self.topic, lambda resp: None))
+        self.run_coroutine(broker.request(self.topic))
 
         self.assertTrue(future.done())
         self.verify_message(future.result(), self.expected_message)
@@ -69,8 +69,7 @@ class RequestMessage(AsyncMixin, unittest.TestCase):
     def test_request_message_with_content(self):
         broker, future = self.setup_broker()
 
-        self.run_coroutine(broker.request(self.topic, lambda resp: None,
-                                          content=self.content))
+        self.run_coroutine(broker.request(self.topic, content=self.content))
 
         self.assertTrue(future.done())
         self.verify_message(future.result(), self.expected_message_with_content)
