@@ -8,25 +8,31 @@ prog = 'subscribe'
 desc = 'Example subscription script'
 
 
-async def receive(client, topic):
-    queue = await client.subscribe(topic)
-    async for message in queue:
+async def setup(url, loop):
+    return await connect(url, loop=loop)
+
+
+async def amain(client, topic):
+    async for message in await client.subscribe(topic):
         print("received '%s' message '%s'" % (topic, message))
+
+
+async def shutdown(client, topic):
+    await client.unsubscribe(topic)
     await client.disconnect()
-    get_event_loop().stop()
 
 
 def main(*, topic, url, verbose):
     setup_logging(verbose)
     loop = get_event_loop()
-    client = loop.run_until_complete(connect(url, loop=loop))
-    loop.create_task(receive(client, topic))
+    client = loop.run_until_complete(setup(url, loop))
 
     try:
-        loop.run_forever()
+        loop.run_until_complete(amain(client, topic))
     except KeyboardInterrupt:
-        loop.run_until_complete(client.unsubscribe(topic))
-        loop.run_forever()
+        loop.run_until_complete(shutdown(client, topic))
+    finally:
+        loop.close()
 
 
 def setup_logging(verbosity):

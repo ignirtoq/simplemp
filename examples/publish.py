@@ -1,19 +1,20 @@
 from argparse import ArgumentParser
 from asyncio import get_event_loop
 from logging import basicConfig, ERROR
-from simplemp import connect
-
+from simplemp import Connection
 
 prog = 'publish'
 desc = 'Example publishing script'
 
 
-def main(*, message, topic, url, verbose):
+async def publish(url, topic, message):
+    with Connection(url) as client:
+        await client.publish(topic, message)
+
+
+def main(*, url, topic, message, verbose):
     setup_logging(verbose)
-    loop = get_event_loop()
-    client = loop.run_until_complete(connect(url, loop=loop))
-    loop.run_until_complete(client.publish(topic, message))
-    loop.run_until_complete(client.disconnect())
+    get_event_loop().run_until_complete(publish(url, topic, message))
 
 
 def setup_logging(verbosity):

@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 from asyncio import get_event_loop
 from logging import basicConfig, ERROR
-from simplemp import connect
+from simplemp import Connection
 
 
 prog = 'request'
@@ -10,18 +10,16 @@ desc = 'Example request script'
 
 async def amain(url, topic, message, loop=None):
     loop = get_event_loop() if loop is None else loop
-    client = await connect(url, loop=loop)
-    responses = await client.request(topic, message)
     response_received = False
 
-    async for response in responses:
-        print("'%s' response received: %s" % (topic, response))
-        response_received = True
+    async with Connection(url, loop=loop) as client:
+        async for response in await client.request(topic, message):
+            print("'%s' response received: %s" % (topic, response))
+            response_received = True
 
     if not response_received:
         print("No responders for '%s'" % topic)
 
-    await client.disconnect()
     loop.stop()
 
 

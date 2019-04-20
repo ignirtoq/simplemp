@@ -12,6 +12,7 @@ from .messages import (TYPE_PUBLICATION, TYPE_REQUEST, TYPE_RESPONSE,
 
 __all__ = [
     'connect',
+    'Connection',
 ]
 
 
@@ -317,3 +318,22 @@ async def connect(
     client = Client(connection, on_disconnect=on_disconnect, loop=loop)
 
     return client
+
+
+class Connection:
+    """
+    Asynchronous context manager for a simplemp client connection.
+
+    See documentation for connect() for arguments.
+    """
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+        self._client: Client
+
+    async def __aenter__(self):
+        self._client = await connect(*self._args, **self._kwargs)
+        return self._client
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self._client.disconnect()
