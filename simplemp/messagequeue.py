@@ -10,6 +10,9 @@ class MessageQueue:
     async def stop(self):
         await self._queue.put(self._done)
 
+    def stop_nowait(self):
+        self._queue.put_nowait(self._done)
+
     async def put(self, item):
         await self._queue.put(item)
 

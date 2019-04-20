@@ -46,10 +46,7 @@ class BrokerBase:
         Call a handler with the content argument only if it is non-None.
         """
         try:
-            if content is None:
-                return await call_as_coroutine(handler, topic)
-            else:
-                return await call_as_coroutine(handler, topic, content)
+            return await call_as_coroutine(handler, topic, content)
         except Exception as e:
             self._log.exception('caught unexpected exception in handler: %s', e)
 
@@ -86,6 +83,10 @@ class RequestResponseBroker(BrokerBase):
         await self._send(create_request_message(topic, sequence=sequence,
                                                 content=content))
         return queue
+
+    def on_disconnect(self):
+        for queue in self._request_queues.values():
+            queue.stop_nowait()
 
     async def _handle_request(self, topic, sequence, content=None):
         handler = self._registered_handlers.get(topic)
@@ -140,6 +141,12 @@ class PublishSubscribeBroker(BrokerBase):
             queues = self._subscriptions.pop(topic)
             for queue in queues:
                 await queue.stop()
+
+    def on_disconnect(self):
+        for subscription in self._subscriptions.values():
+            for queue in subscription:
+                queue.stop_nowait()
+        self._subscriptions = {}
 
     async def _handle_publication(self, topic, content=None):
         if topic in self._subscriptions:
