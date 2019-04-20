@@ -15,7 +15,7 @@ class Server:
     def __init__(self, loop=None):
         self._loop = get_event_loop() if loop is None else loop
         self._log = getLogger(__name__)
-        self._request_response = RequestResponse(self._broadcast)
+        self._request_response = RequestResponse()
         self._publish_subscribe = PublishSubscribe()
         self._handlers = {
             TYPE_REQUEST: self._request_response.handle_request,
@@ -32,10 +32,6 @@ class Server:
         if self._server is None:
             self._log.debug('shutting down server')
             await self._server.shutdown()
-
-    async def _broadcast(self, message):
-        if self._server is not None:
-            await self._server.broadcast(message)
 
     async def _on_client_connect(self, connection: BaseConnection):
         self._log.info('client %s connected', connection.remote_address)

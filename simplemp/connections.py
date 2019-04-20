@@ -59,15 +59,6 @@ class BaseServer:
     async def create(cls, url, on_client_connect=None, loop=None, **kwargs):
         raise NotImplementedError
 
-    async def broadcast(self, message):
-        broadcast_tasks = set()
-        for client in self.clients:
-            broadcast_tasks.add(self.loop.create_task(
-                client.send(message)
-            ))
-
-        await gather(*broadcast_tasks, return_exceptions=True)
-
 
 class TcpConnection(BaseConnection):
     url_prefix = 'tcp://'

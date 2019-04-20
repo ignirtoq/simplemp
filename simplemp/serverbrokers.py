@@ -2,7 +2,7 @@ from asyncio import get_event_loop
 from collections import defaultdict
 from functools import partial
 from logging import getLogger
-from typing import Any, Callable, Coroutine, Optional, Dict, Set
+from typing import Any, Callable, Optional, Dict, Set
 
 from .connections import BaseConnection
 from .messages import (create_request_complete_message,
@@ -154,10 +154,9 @@ class RegistrationAssociations:
 
 
 class RequestResponse:
-    def __init__(self, broadcast: Callable[[Any], Coroutine], *, loop=None):
+    def __init__(self, *, loop=None):
         self.loop = get_event_loop() if loop is None else loop
         self.log = getLogger(__name__)
-        self.broadcast = broadcast
         self.requests = RequestPool(loop=self.loop)
         self.registrations = RegistrationAssociations()
 
