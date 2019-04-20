@@ -3,38 +3,45 @@ from collections import defaultdict
 from functools import partial
 from logging import getLogger
 from typing import Any, Callable, Optional, Dict, Set
+from uuid import uuid4
 
 from .connections import BaseConnection
 from .messages import (create_request_complete_message,
-                       get_message_sequence, get_message_topic)
+                       get_message_sequence, get_message_topic,
+                       replace_message_sequence)
 
 
 class PendingRequest:
     def __init__(self, requester: BaseConnection, responders: set,
                  on_complete: Callable, *, loop=None):
         self.loop = get_event_loop() if loop is None else loop
-        self.sequence = None
+        self.requester_sequence = None
+        self.responder_sequence = None
         self.topic = None
         self.requester = requester
         self.responders = responders.copy()
         self.on_complete = on_complete
 
-    async def send_request(self, message):
-        self.sequence = get_message_sequence(message)
+    async def send_request(self, responder_sequence, message):
+        self.requester_sequence = get_message_sequence(message)
+        self.responder_sequence = responder_sequence
         self.topic = get_message_topic(message)
+        replace_message_sequence(message, self.responder_sequence)
         for responder in self.responders:
             await responder.send(message)
 
     async def send_response(self, message, connection):
         if connection in self.responders:
+            replace_message_sequence(message, self.requester_sequence)
             await self.requester.send(message)
             self.remove_responder(connection)
 
     def remove_responder(self, connection):
         self.responders.remove(connection)
         if len(self.responders) == 0:
-            complete_msg = create_request_complete_message(self.topic,
-                                                           self.sequence)
+            complete_msg = create_request_complete_message(
+                self.topic, self.requester_sequence
+            )
             self.loop.create_task(self.requester.send(complete_msg))
             self.on_complete()
 
@@ -53,7 +60,7 @@ class RequestPool:
 
     async def add_request(self, requester: BaseConnection,
                           message, responders: Set[BaseConnection]):
-        sequence = get_message_sequence(message)
+        sequence = self._get_new_sequence()
         pending_request = PendingRequest(
             requester, responders, partial(self.on_complete, sequence),
             loop=self.loop
@@ -62,7 +69,7 @@ class RequestPool:
         self.requesters[requester].add(sequence)
         for responder in responders:
             self.responders[responder].add(sequence)
-        await pending_request.send_request(message)
+        await pending_request.send_request(sequence, message)
 
     async def send_response(self, responder: BaseConnection, message):
         sequence = get_message_sequence(message)
@@ -99,6 +106,12 @@ class RequestPool:
 
     def on_complete(self, sequence):
         self.remove_requester_sequence(sequence)
+
+    def _get_new_sequence(self):
+        sequence = str(uuid4())
+        while sequence in self.requests:
+            sequence = str(uuid4())
+        return sequence
 
 
 class RegistrationAssociations:

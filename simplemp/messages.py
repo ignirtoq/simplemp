@@ -79,6 +79,10 @@ def get_message_type(message):
     return message.get(FIELD_TYPE)
 
 
+def replace_message_sequence(message, new_sequence):
+    message[FIELD_SEQUENCE] = new_sequence
+
+
 def unpack_message(message):
     return (message.get(FIELD_TYPE), message.get(FIELD_TOPIC),
             message.get(FIELD_SEQUENCE), message.get(FIELD_CONTENT))
